@@ -443,6 +443,28 @@ def calculate_row(
     }
 
 
+def normalize_input_classes(tt_class: str, th_class: str, meter_class: str) -> Tuple[str, str, str]:
+    """Нормализует строковые обозначения классов точности (точки/запятые, дефисы для отсутствующих)."""
+    # Нормализация ТТ
+    tt = str(tt_class).strip().replace(",", ".")
+    if tt in ["-", "—", "---", "", "нет", "Без ТТ", "None"]:
+        tt = "Без ТТ"
+
+    # Нормализация ТН
+    th = str(th_class).strip().replace(",", ".")
+    if th in ["-", "—", "---", "", "нет", "Без ТН", "None"]:
+        th = "Без ТН"
+
+    # Нормализация счетчика
+    meter = str(meter_class).strip().replace(",", ".")
+    if meter not in METER_BASE_PROFILES:
+        for k in METER_BASE_PROFILES:
+            if k in meter:
+                meter = k
+                break
+    return tt, th, meter
+
+
 def generate_group_table(
     ik_num: str,
     tt_class: str,
@@ -457,6 +479,7 @@ def generate_group_table(
     Генерирует полную последовательность строк для измерительного канала / группы
     по всем нормируемым точкам тока и cos φ.
     """
+    tt_class, th_class, meter_class = normalize_input_classes(tt_class, th_class, meter_class)
     meter_prof = METER_BASE_PROFILES[meter_class]
 
     # Точка 1(2)% присутствует только если счетчик и ТТ поддерживают класс S
@@ -538,7 +561,15 @@ PRESET_PROJECT_GROUPS = [
         "delta_L": 0.00
     },
     {
-        "name": "Группа 7 (0,4 кВ с ТТ 0,5S, без ТН, СЭТ-4ТМ 0,5S/1,0)",
+        "name": "Группа 7 (Прямое высоковольтное 10 кВ, РИМ 384.02 КТ 0,5S/1,0)",
+        "ik": "18",
+        "tt": "Без ТТ",
+        "th": "Без ТН",
+        "meter": "0.5S / 1.0",
+        "delta_L": 0.00
+    },
+    {
+        "name": "Группа 8 (0,4 кВ с ТТ 0,5S, без ТН, СЭТ-4ТМ 0,5S/1,0)",
         "ik": "8, 10",
         "tt": "0.5S",
         "th": "Без ТН",
@@ -546,7 +577,7 @@ PRESET_PROJECT_GROUPS = [
         "delta_L": 0.00
     },
     {
-        "name": "Группа 8 (Высокоточный коммерческий учет 0,2S)",
+        "name": "Группа 9 (Высокоточный эталонный учет 0,2S)",
         "ik": "ЭТАЛОН",
         "tt": "0.2S",
         "th": "0.2",
