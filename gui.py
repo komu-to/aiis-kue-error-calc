@@ -22,6 +22,9 @@ from exporters import (
     export_to_excel,
     export_to_docx,
     make_export_filename,
+    export_table51_to_docx,
+    export_table51_to_excel,
+    get_table51_tsv_text,
 )
 
 TEMP_PRESETS = [
@@ -200,9 +203,11 @@ class ErrorCalcApp:
 
         ttk.Button(btn_action_frame, text="🚀 Рассчитать вариант", command=self.on_calculate).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_action_frame, text="📑 Все группы проекта", command=self.on_calculate_all_groups).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_action_frame, text="📋 Копировать в буфер", command=self.on_copy_clipboard).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_action_frame, text="📊 Экспорт в Excel", command=self.on_export_excel).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_action_frame, text="📝 Экспорт в Word", command=self.on_export_docx).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="📋 В буфер", command=self.on_copy_clipboard).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="📊 Excel", command=self.on_export_excel).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="📝 Word", command=self.on_export_docx).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="📑 Таблица 5.1 (Word)", command=self.on_export_table51_docx).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="📊 Таблица 5.1 (Excel)", command=self.on_export_table51_excel).pack(side=tk.LEFT, padx=3)
 
         # --- Область отображения таблицы (Treeview со скроллбарами) ---
         table_container = ttk.Frame(main_frame)
@@ -229,9 +234,13 @@ class ErrorCalcApp:
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="Копировать выделенное (TSV)", command=self.copy_selection)
         self.context_menu.add_command(label="Копировать всю таблицу", command=self.on_copy_clipboard)
+        self.context_menu.add_command(label="Копировать как Таблицу 5.1 (δW осн)", command=self.on_copy_table51)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Экспорт в Excel (.xlsx)", command=self.on_export_excel)
         self.context_menu.add_command(label="Экспорт в Word (.docx)", command=self.on_export_docx)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Word, δW осн)", command=self.on_export_table51_docx)
+        self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Excel, δW осн)", command=self.on_export_table51_excel)
         self.tree.bind("<Button-3>", self.show_context_menu)
 
         # Привязка клавиши Ctrl+C
@@ -510,6 +519,94 @@ class ErrorCalcApp:
             messagebox.showinfo("Экспорт завершен", f"Таблица успешно сохранена в файл Word:\n{filepath}")
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить файл Word:\n{e}")
+
+    def on_copy_table51(self):
+        """Копирование данных в формате Таблицы 5.1 (δW осн) в буфер обмена."""
+        if not self.current_rows:
+            messagebox.showwarning("Предупреждение", "Нет данных для копирования.")
+            return
+
+        tsv_text = get_table51_tsv_text(self.current_rows, val_type="osn")
+        self.root.clipboard_clear()
+        self.root.clipboard_append(tsv_text)
+        self.status_var.set("Матрица Таблицы 5.1 (δW осн) скопирована в буфер обмена (TSV).")
+        messagebox.showinfo("Буфер обмена", "Матрица Таблицы 5.1 (δW осн: акт и реакт) скопирована в буфер обмена!\nТеперь вы можете нажать Ctrl+V в Excel или Word.")
+
+    def on_export_table51_docx(self):
+        """Экспорт в формат Таблицы 5.1 проекта (Word, δW осн)."""
+        if not self.current_rows:
+            messagebox.showwarning("Предупреждение", "Нет данных для экспорта.")
+            return
+
+        params = getattr(self, "current_calc_params", {})
+        if getattr(self, "is_all_groups", False):
+            def_name = f"Таблица_5.1_δW_осн-Все_ИК_1-23.docx"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности измерений ИК АИИС КУЭ, ± δWосн (%)"
+        else:
+            base_fn = make_export_filename(
+                ik_str=params.get("ik", self.ik_var.get()),
+                tt_str=params.get("tt", self.tt_var.get()),
+                th_str=params.get("th", self.th_var.get()),
+                meter_str=params.get("meter", self.meter_var.get()),
+                delta_t=params.get("delta_t", self.delta_t_var.get()),
+                ext="docx"
+            )
+            def_name = f"Таблица_5.1_δW_осн-{base_fn}"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_var.get())}, ± δWосн (%)"
+
+        filepath = filedialog.asksaveasfilename(
+            title="Сохранить в формате Таблицы 5.1 (Word)",
+            defaultextension=".docx",
+            filetypes=[("Файлы Word (*.docx)", "*.docx"), ("Все файлы (*.*)", "*.*")],
+            initialfile=def_name
+        )
+        if not filepath:
+            return
+
+        try:
+            export_table51_to_docx(self.current_rows, filepath, val_type="osn", title=title)
+            self.status_var.set(f"Таблица 5.1 (δW осн) успешно экспортирована в Word: {os.path.basename(filepath)}")
+            messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW осн) успешно сохранена в файл Word:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить Таблицу 5.1 в Word:\n{e}")
+
+    def on_export_table51_excel(self):
+        """Экспорт в формат Таблицы 5.1 проекта (Excel, δW осн)."""
+        if not self.current_rows:
+            messagebox.showwarning("Предупреждение", "Нет данных для экспорта.")
+            return
+
+        params = getattr(self, "current_calc_params", {})
+        if getattr(self, "is_all_groups", False):
+            def_name = f"Таблица_5.1_δW_осн-Все_ИК_1-23.xlsx"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности измерений ИК АИИС КУЭ, ± δWосн (%)"
+        else:
+            base_fn = make_export_filename(
+                ik_str=params.get("ik", self.ik_var.get()),
+                tt_str=params.get("tt", self.tt_var.get()),
+                th_str=params.get("th", self.th_var.get()),
+                meter_str=params.get("meter", self.meter_var.get()),
+                delta_t=params.get("delta_t", self.delta_t_var.get()),
+                ext="xlsx"
+            )
+            def_name = f"Таблица_5.1_δW_осн-{base_fn}"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_var.get())}, ± δWосн (%)"
+
+        filepath = filedialog.asksaveasfilename(
+            title="Сохранить в формате Таблицы 5.1 (Excel)",
+            defaultextension=".xlsx",
+            filetypes=[("Файлы Excel (*.xlsx)", "*.xlsx"), ("Все файлы (*.*)", "*.*")],
+            initialfile=def_name
+        )
+        if not filepath:
+            return
+
+        try:
+            export_table51_to_excel(self.current_rows, filepath, val_type="osn", title=title)
+            self.status_var.set(f"Таблица 5.1 (δW осн) успешно экспортирована в Excel: {os.path.basename(filepath)}")
+            messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW осн) успешно сохранена в файл Excel:\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить Таблицу 5.1 в Excel:\n{e}")
 
 
 def main():

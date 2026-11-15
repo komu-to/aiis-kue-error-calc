@@ -11,7 +11,15 @@
 import sys
 import argparse
 from core import generate_group_table, PRESET_PROJECT_GROUPS
-from exporters import export_to_excel, export_to_docx, get_tsv_text, make_export_filename
+from exporters import (
+    export_to_excel,
+    export_to_docx,
+    get_tsv_text,
+    make_export_filename,
+    export_table51_to_excel,
+    export_table51_to_docx,
+    get_table51_tsv_text,
+)
 
 
 def parse_args():
@@ -26,7 +34,9 @@ def parse_args():
     parser.add_argument("--mag", choices=["gost", "all", "all_points", "none", "custom"], default="gost", help="Режим влияния магнитной индукции: gost (по ГОСТ 31819 при Iном, cos=1), all (во всех точках), none, custom")
     parser.add_argument("--mag-val", type=float, default=0.5, help="Значение δми в %% для пользовательского режима (по умолчанию 0.5)")
     parser.add_argument("--all-groups", action="store_true", help="Сгенерировать все типовые группы проекта")
-    parser.add_argument("--mode", choices=["summary", "full"], default="full", help="Формат таблицы: summary (15 граф) или full (29 граф)")
+    parser.add_argument("--mode", choices=["summary", "full", "table51"], default="full", help="Формат таблицы: summary (15 граф), full (29 граф) или table51 (матрица Таблицы 5.1 МИ)")
+    parser.add_argument("--table51", action="store_true", help="Экспортировать в формат Таблицы 5.1 (матрица по cos phi и токам)")
+    parser.add_argument("--val-type", choices=["osn", "rab"], default="osn", help="Тип выводимой погрешности для Таблицы 5.1: osn (δW осн, по умолчанию) или rab (δW раб)")
     parser.add_argument("--out", type=str, help="Путь для сохранения файла (.xlsx или .docx)")
     return parser.parse_args()
 
@@ -66,11 +76,13 @@ def run_cli(args):
 
     print(f"Рассчитано строк: {len(target_rows)}")
 
+    is_table51 = args.table51 or args.mode == "table51"
+
     if args.out:
         out_path = args.out
         if out_path.lower() in ["auto", "auto.xlsx", "auto.docx", ".xlsx", ".docx", "xlsx", "docx"]:
             ext = "docx" if "docx" in out_path.lower() else "xlsx"
-            out_path = make_export_filename(
+            base_name = make_export_filename(
                 ik_str=args.ik,
                 tt_str=args.tt,
                 th_str=args.th,
@@ -79,18 +91,34 @@ def run_cli(args):
                 ext=ext,
                 is_all_groups=args.all_groups
             )
-        if out_path.lower().endswith(".xlsx"):
-            title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
-            export_to_excel(target_rows, out_path, mode=args.mode, title=title)
-            print(f"Успешно экспортировано в Excel: {out_path}")
-        elif out_path.lower().endswith(".docx"):
-            title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
-            export_to_docx(target_rows, out_path, mode=args.mode, title=title)
-            print(f"Успешно экспортировано в Word: {out_path}")
+            out_path = f"Таблица_5.1_δW_{args.val_type}-{base_name}" if is_table51 else base_name
+
+        if is_table51:
+            val_sym = "δWосн" if args.val_type == "osn" else "δWраб"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК, ± {val_sym} (%)"
+            if out_path.lower().endswith(".xlsx"):
+                export_table51_to_excel(target_rows, out_path, val_type=args.val_type, title=title)
+                print(f"Успешно экспортировано в Excel (Таблица 5.1): {out_path}")
+            elif out_path.lower().endswith(".docx"):
+                export_table51_to_docx(target_rows, out_path, val_type=args.val_type, title=title)
+                print(f"Успешно экспортировано в Word (Таблица 5.1): {out_path}")
+            else:
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(get_table51_tsv_text(target_rows, val_type=args.val_type))
+                print(f"Успешно сохранен TSV (Таблица 5.1): {out_path}")
         else:
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(get_tsv_text(target_rows, mode=args.mode))
-            print(f"Успешно сохранен TSV: {out_path}")
+            if out_path.lower().endswith(".xlsx"):
+                title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
+                export_to_excel(target_rows, out_path, mode=args.mode, title=title)
+                print(f"Успешно экспортировано в Excel: {out_path}")
+            elif out_path.lower().endswith(".docx"):
+                title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
+                export_to_docx(target_rows, out_path, mode=args.mode, title=title)
+                print(f"Успешно экспортировано в Word: {out_path}")
+            else:
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(get_tsv_text(target_rows, mode=args.mode))
+                print(f"Успешно сохранен TSV: {out_path}")
     else:
         print("\nПервые строки с точкой I=100%:")
         for r in target_rows:
