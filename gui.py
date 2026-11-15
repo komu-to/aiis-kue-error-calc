@@ -6,7 +6,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
 
 from core import (
     TT_PARAMS,
