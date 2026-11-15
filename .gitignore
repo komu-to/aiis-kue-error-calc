@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Office temp files
+~$*.xlsx
+~$*.docx
+*.tmp
+
+# Virtual environments
+venv/
+env/
+.venv/
