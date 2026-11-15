@@ -31,6 +31,13 @@ TEMP_PRESETS = [
     ("Пользовательское значение...", None),
 ]
 
+MAG_PRESETS = [
+    ("По ГОСТ 31819 (0,5% / 1,0% / 2,0% при Iном, cos φ=1) [По умолчанию]", "gost"),
+    ("Во всех точках диапазона (по паспорту счетчика, напр. РИМ)", "all_points"),
+    ("Пользовательское значение (ввод в %)...", "custom"),
+    ("Не учитывать (н/н во всех точках)", "none"),
+]
+
 
 class ErrorCalcApp:
     def __init__(self, root: tk.Tk):
@@ -80,7 +87,7 @@ class ErrorCalcApp:
         subtitle_label.pack(side=tk.RIGHT, pady=(4, 0))
 
         # --- Панель настроек (Controls) ---
-        controls_group = ttk.LabelFrame(main_frame, text=" Параметры измерительного канала и климатических условий ", padding="10")
+        controls_group = ttk.LabelFrame(main_frame, text=" Параметры измерительного канала, климатических условий и влияющих величин ", padding="10")
         controls_group.pack(fill=tk.X, pady=(0, 10))
 
         # Сетка параметров: 3 колонки
@@ -116,17 +123,26 @@ class ErrorCalcApp:
         self.meter_var = tk.StringVar(value="0.2S / 0.5")
         self.meter_combo = ttk.Combobox(c2, textvariable=self.meter_var, values=list(METER_BASE_PROFILES.keys()), state="readonly", width=18)
         self.meter_combo.grid(row=0, column=1, sticky=tk.W, pady=2, padx=5)
+        self.meter_combo.bind("<<ComboboxSelected>>", lambda e: self.on_calculate())
 
         ttk.Label(c2, text="Номер / обозначение ИК:").grid(row=1, column=0, sticky=tk.W, pady=2)
         self.ik_name_var = tk.StringVar(value="1, 2, 15, 16")
         self.ik_name_entry = ttk.Entry(c2, textvariable=self.ik_name_var, width=20)
         self.ik_name_entry.grid(row=1, column=1, sticky=tk.W, pady=2, padx=5)
 
-        self.magnetic_var = tk.BooleanVar(value=False)
-        self.mag_check = ttk.Checkbutton(c2, text="Внешнее магнитное поле (0,5 мТл)", variable=self.magnetic_var)
-        self.mag_check.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=2)
+        ttk.Label(c2, text="Магнитная индукция (δми):", font=("Segoe UI", 9, "bold")).grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.mag_preset_var = tk.StringVar(value=MAG_PRESETS[0][0])
+        self.mag_combo = ttk.Combobox(
+            c2,
+            textvariable=self.mag_preset_var,
+            values=[title for title, _ in MAG_PRESETS],
+            state="readonly",
+            width=28
+        )
+        self.mag_combo.grid(row=2, column=1, sticky=tk.W, pady=2, padx=5)
+        self.mag_combo.bind("<<ComboboxSelected>>", self.on_mag_mode_changed)
 
-        # --- Колонка 3: Температура ---
+        # --- Колонка 3: Температура и свои значения ---
         c3 = ttk.Frame(grid_frame)
         c3.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
@@ -147,6 +163,11 @@ class ErrorCalcApp:
         self.delta_t_entry = ttk.Entry(c3, textvariable=self.delta_t_var, width=12)
         self.delta_t_entry.grid(row=1, column=1, sticky=tk.W, pady=2, padx=5)
 
+        ttk.Label(c3, text="Свое δми (% при необходимости):").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.custom_dmi_var = tk.StringVar(value="0.5")
+        self.custom_dmi_entry = ttk.Entry(c3, textvariable=self.custom_dmi_var, width=12, state=tk.DISABLED)
+        self.custom_dmi_entry.grid(row=2, column=1, sticky=tk.W, pady=2, padx=5)
+
         # --- Панель кнопок и переключателя вида ---
         btn_bar = ttk.Frame(controls_group)
         btn_bar.pack(fill=tk.X, pady=(8, 0))
@@ -155,20 +176,20 @@ class ErrorCalcApp:
         view_frame = ttk.LabelFrame(btn_bar, text=" Формат отображения ", padding="3")
         view_frame.pack(side=tk.LEFT, padx=(0, 15))
 
-        self.mode_var = tk.StringVar(value="summary")
-        ttk.Radiobutton(
-            view_frame,
-            text="Сводная таблица (15 граф)",
-            variable=self.mode_var,
-            value="summary",
-            command=self.refresh_table_view
-        ).pack(side=tk.LEFT, padx=5)
-
+        self.mode_var = tk.StringVar(value="full")  # По умолчанию открываем полную таблицу с 29 графами, чтобы δми сразу было видно!
         ttk.Radiobutton(
             view_frame,
             text="Полная таблица (29 граф по МИ 3000)",
             variable=self.mode_var,
             value="full",
+            command=self.refresh_table_view
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Radiobutton(
+            view_frame,
+            text="Сводная таблица (15 граф)",
+            variable=self.mode_var,
+            value="summary",
             command=self.refresh_table_view
         ).pack(side=tk.LEFT, padx=5)
 
@@ -228,17 +249,14 @@ class ErrorCalcApp:
         status_bar.pack(fill=tk.X, pady=(2, 0))
 
     def on_tt_changed(self, event=None):
-        """Реакция на выбор ТТ."""
         tt = self.tt_var.get()
         if tt == "Без ТТ":
-            # Обычно без ТТ также и без ТН
             if self.th_var.get() != "Без ТН":
                 self.th_var.set("Без ТН")
                 self.delta_L_var.set("0.00")
         self.on_calculate()
 
     def on_th_changed(self, event=None):
-        """Реакция на выбор ТН."""
         th = self.th_var.get()
         if th == "Без ТН":
             self.delta_L_var.set("0.00")
@@ -256,7 +274,13 @@ class ErrorCalcApp:
                     self.on_calculate()
                 break
 
-    def get_parsed_params(self) -> Tuple[str, str, str, str, float, float, bool]:
+    def on_mag_mode_changed(self, event=None):
+        selected_title = self.mag_preset_var.get()
+        is_custom = ("custom" in selected_title.lower() or "пользовательское" in selected_title.lower())
+        self.custom_dmi_entry.config(state=tk.NORMAL if is_custom else tk.DISABLED)
+        self.on_calculate()
+
+    def get_parsed_params(self) -> Tuple[str, str, str, str, float, float, str, float]:
         ik_num = self.ik_name_var.get().strip() or "ИК"
         tt_class = self.tt_var.get()
         th_class = self.th_var.get()
@@ -274,12 +298,25 @@ class ErrorCalcApp:
             delta_L = 0.25
             self.delta_L_var.set("0.25")
 
-        apply_mag = self.magnetic_var.get()
-        return ik_num, tt_class, th_class, meter_class, delta_t, delta_L, apply_mag
+        # Режим влияния магнитной индукции
+        selected_mag = self.mag_preset_var.get()
+        mag_mode = "gost"
+        for title, mode_key in MAG_PRESETS:
+            if title == selected_mag:
+                mag_mode = mode_key
+                break
+
+        try:
+            custom_dmi = float(self.custom_dmi_var.get().replace(",", "."))
+        except ValueError:
+            custom_dmi = 0.5
+            self.custom_dmi_var.set("0.5")
+
+        return ik_num, tt_class, th_class, meter_class, delta_t, delta_L, mag_mode, custom_dmi
 
     def on_calculate(self):
         """Расчет одного выбранного варианта."""
-        ik_num, tt_class, th_class, meter_class, delta_t, delta_L, apply_mag = self.get_parsed_params()
+        ik_num, tt_class, th_class, meter_class, delta_t, delta_L, mag_mode, custom_dmi = self.get_parsed_params()
         self.current_rows = generate_group_table(
             ik_num=ik_num,
             tt_class=tt_class,
@@ -287,14 +324,15 @@ class ErrorCalcApp:
             meter_class=meter_class,
             delta_t=delta_t,
             delta_L=delta_L,
-            apply_magnetic_field=apply_mag
+            magnetic_mode=mag_mode,
+            custom_dmi_val=custom_dmi
         )
         self.refresh_table_view()
-        self.status_var.set(f"Рассчитан канал [{ik_num}]: ТТ {tt_class}, ТН {th_class}, Счетчик {meter_class}, Δt={delta_t}°C. Строк: {len(self.current_rows)}")
+        self.status_var.set(f"Рассчитан канал [{ik_num}]: ТТ {tt_class}, ТН {th_class}, Счетчик {meter_class}, Δt={delta_t}°C, Магн. индукция={mag_mode}. Строк: {len(self.current_rows)}")
 
     def on_calculate_all_groups(self):
         """Пакетный расчет всех типовых групп каналов проекта."""
-        _, _, _, _, delta_t, _, apply_mag = self.get_parsed_params()
+        _, _, _, _, delta_t, _, mag_mode, custom_dmi = self.get_parsed_params()
         all_rows = []
         for g in PRESET_PROJECT_GROUPS:
             rows = generate_group_table(
@@ -304,7 +342,8 @@ class ErrorCalcApp:
                 meter_class=g["meter"],
                 delta_t=delta_t,
                 delta_L=g["delta_L"],
-                apply_magnetic_field=apply_mag
+                magnetic_mode=mag_mode,
+                custom_dmi_val=custom_dmi
             )
             all_rows.extend(rows)
 

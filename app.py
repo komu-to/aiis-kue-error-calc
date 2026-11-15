@@ -23,15 +23,18 @@ def parse_args():
     parser.add_argument("--meter", type=str, default="0.2S / 0.5", help="Класс точности счетчика (0.2S / 0.5, 0.5S / 1.0, 1.0 / 1.0, 1.0 / 2.0)")
     parser.add_argument("--dt", type=float, default=20.0, help="Предельное отклонение температуры Δt, °C (по умолчанию 20.0)")
     parser.add_argument("--dL", type=float, default=0.25, help="Потери напряжения в линии связи ТН-счетчик, %% (по умолчанию 0.25)")
-    parser.add_argument("--mag", action="store_true", help="Учитывать внешнее магнитное поле (0.5 мТл)")
+    parser.add_argument("--mag", choices=["gost", "all", "all_points", "none", "custom"], default="gost", help="Режим влияния магнитной индукции: gost (по ГОСТ 31819 при Iном, cos=1), all (во всех точках), none, custom")
+    parser.add_argument("--mag-val", type=float, default=0.5, help="Значение δми в %% для пользовательского режима (по умолчанию 0.5)")
     parser.add_argument("--all-groups", action="store_true", help="Сгенерировать все типовые группы проекта")
-    parser.add_argument("--mode", choices=["summary", "full"], default="summary", help="Формат таблицы: summary (15 граф) или full (29 граф)")
+    parser.add_argument("--mode", choices=["summary", "full"], default="full", help="Формат таблицы: summary (15 граф) или full (29 граф)")
     parser.add_argument("--out", type=str, help="Путь для сохранения файла (.xlsx или .docx)")
     return parser.parse_args()
 
 
 def run_cli(args):
     print("=== Расчет погрешностей ИК АИИС КУЭ (Консольный режим) ===")
+    mag_mode = "all_points" if args.mag == "all" else args.mag
+
     if args.all_groups:
         print(f"Генерация всех типовых групп ({len(PRESET_PROJECT_GROUPS)} групп)...")
         all_rows = []
@@ -43,12 +46,13 @@ def run_cli(args):
                 meter_class=g["meter"],
                 delta_t=args.dt,
                 delta_L=g["delta_L"],
-                apply_magnetic_field=args.mag
+                magnetic_mode=mag_mode,
+                custom_dmi_val=args.mag_val
             )
             all_rows.extend(rows)
         target_rows = all_rows
     else:
-        print(f"Канал [{args.ik}]: ТТ {args.tt}, ТН {args.th}, Счетчик {args.meter}, Δt={args.dt}°C, δL={args.dL}%")
+        print(f"Канал [{args.ik}]: ТТ {args.tt}, ТН {args.th}, Счетчик {args.meter}, Δt={args.dt}°C, δL={args.dL}%, Магнитный режим={mag_mode}")
         target_rows = generate_group_table(
             ik_num=args.ik,
             tt_class=args.tt,
@@ -56,7 +60,8 @@ def run_cli(args):
             meter_class=args.meter,
             delta_t=args.dt,
             delta_L=args.dL,
-            apply_magnetic_field=args.mag
+            magnetic_mode=mag_mode,
+            custom_dmi_val=args.mag_val
         )
 
     print(f"Рассчитано строк: {len(target_rows)}")
@@ -70,14 +75,14 @@ def run_cli(args):
             export_to_docx(target_rows, out_path, mode=args.mode, title="Расчет пределов погрешностей ИК АИИС КУЭ")
             print(f"Успешно экспортировано в Word: {out_path}")
         else:
-            # Текстовый вывод TSV
             with open(out_path, "w", encoding="utf-8") as f:
                 f.write(get_tsv_text(target_rows, mode=args.mode))
             print(f"Успешно сохранен TSV: {out_path}")
     else:
-        print("\nПервые 5 строк результата (Сводный вид):")
-        for r in target_rows[:5]:
-            print(f"  I1={r['i1']:5s} cos={r['cos_phi']:4s} | dW_осн_акт={r['dW_osn_act']:4s}% dW_осн_реакт={r['dW_osn_react']:4s}% | dW_раб_акт={r['dW_rab_act']:4s}% dW_раб_реакт={r['dW_rab_react']:4s}%")
+        print("\nПервые строки с точкой I=100%:")
+        for r in target_rows:
+            if r["i1"] in ["100", "100-120"]:
+                print(f"  I1={r['i1']:5s} cos={r['cos_phi']:4s} | δми={r['dmi_act']:4s}% | dW_осн_акт={r['dW_osn_act']:4s}% | dW_раб_акт={r['dW_rab_act']:4s}%")
 
 
 def main():

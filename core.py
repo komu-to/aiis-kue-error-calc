@@ -48,15 +48,12 @@ TH_PARAMS: Dict[str, Dict[str, Any]] = {
 }
 
 # Характеристики счетчиков электроэнергии по классам точности
-# Содержит базовые погрешности и коэффициенты чувствительности
 METER_BASE_PROFILES: Dict[str, Dict[str, Any]] = {
     "0.2S / 0.5": {
         "name": "СЭТ-4ТМ.03М / аналоги",
         "class_act": "0,2S",
         "class_react": "0,5",
         "has_1pct": True,
-        # point key: (I1, cos_phi) -> (dco_act, dco_react, Kt_act, Kt_react, dcU_act, dcU_react, dcf_act, dcf_react)
-        # где Kt = dct / 23.0 (% / °C)
         "data": {
             ("1(2)", 0.5): (0.50, 1.00, -0.46/23.0, -0.81/23.0, 0.10, 0.20, 0.20, 0.25),
             ("1(2)", 0.8): (0.44, 1.00, -0.32/23.0, -1.06/23.0, 0.10, 0.20, 0.14, 0.36),
@@ -237,6 +234,27 @@ METER_BASE_PROFILES: Dict[str, Dict[str, Any]] = {
 }
 
 
+def get_meter_class_dmi_norm(kt_c_act: str) -> float:
+    """
+    Норматив дополнительной погрешности от воздействия магнитной индукции 0,5 мТл
+    в соответствии с ГОСТ 31819.22 (таблица 8) и ГОСТ 31819.21 (таблица 8):
+    - Класс 0,2S: ±0,5%
+    - Класс 0,5S: ±1,0%
+    - Класс 1,0:  ±2,0%
+    - Класс 2,0:  ±3,0%
+    """
+    norm_str = kt_c_act.replace(",", ".")
+    if "0.2" in norm_str:
+        return 0.50
+    elif "0.5" in norm_str:
+        return 1.00
+    elif "1" in norm_str:
+        return 2.00
+    elif "2" in norm_str:
+        return 3.00
+    return 1.00
+
+
 def fmt_float(val: Optional[float], decimals: int = 2) -> str:
     """Форматирование вещественного числа с русской запятой или прочерком."""
     if val is None:
@@ -255,10 +273,16 @@ def calculate_row(
     meter_class: str,
     delta_t: float,
     delta_L: float,
-    apply_magnetic_field: bool = False
+    magnetic_mode: str = "gost",
+    custom_dmi_val: float = 0.0
 ) -> Dict[str, Any]:
     """
     Расчет полного набора характеристик (29 граф) для одной точки (I1, cos_phi).
+    magnetic_mode:
+      - 'gost': норматив ГОСТ при I=100%, cos φ=1.0 (0.5% для 0.2S, 1.0% для 0.5S, 2.0% для 1.0). По умолчанию!
+      - 'all_points': норматив ГОСТ во всех точках диапазона (для счетчиков с постоянным нормированием, напр. РИМ).
+      - 'custom': пользовательское числовое значение custom_dmi_val.
+      - 'none': не нормируется (н/н во всех точках).
     """
     # 1. Параметры ТТ
     is_direct_tt = (tt_class == "Без ТТ")
@@ -313,7 +337,6 @@ def calculate_row(
 
     point_data = meter_prof["data"].get((i1_str, cos_phi))
     if point_data is None:
-        # fallback to 5% point if 1(2)% is requested for class without 1%
         point_data = meter_prof["data"].get(("5", cos_phi))
 
     (dco_act, dco_react, Kt_act, Kt_react, dcU_act, dcU_react, dcf_act, dcf_react) = point_data
@@ -322,21 +345,32 @@ def calculate_row(
     dct_act = Kt_act * delta_t
     dct_react = (Kt_react * delta_t) if Kt_react is not None else None
 
-    # Погрешность от внешнего магнитного поля
-    if apply_magnetic_field and i1_str == "100" and math.isclose(cos_phi, 1.0, rel_tol=1e-3):
-        if "0.2" in kt_c_act:
-            dmi_act = 0.50
-        elif "0.5" in kt_c_act:
-            dmi_act = 1.00
+    # Погрешность от внешнего магнитного поля (δми)
+    is_nominal_100_point = (i1_str in ["100", "100-120"] and math.isclose(cos_phi, 1.0, rel_tol=1e-3))
+    standard_dmi_norm = get_meter_class_dmi_norm(kt_c_act)
+
+    if magnetic_mode == "gost":
+        if is_nominal_100_point:
+            dmi_act = standard_dmi_norm
+            dmi_react = None
         else:
-            dmi_act = 2.00
+            dmi_act = None
+            dmi_react = None
+    elif magnetic_mode == "all_points":
+        dmi_act = standard_dmi_norm
         dmi_react = None
-    else:
-        dmi_act = 0.0
+    elif magnetic_mode == "custom":
+        if is_nominal_100_point or custom_dmi_val > 0.0:
+            dmi_act = custom_dmi_val
+            dmi_react = None
+        else:
+            dmi_act = None
+            dmi_react = None
+    else:  # 'none'
+        dmi_act = None
         dmi_react = None
 
     # 6. Основная погрешность ИК (δW_осн)
-    # Для каналов прямого включения без ТТ и без ТН: δW_осн = 1.1 * δс.о
     if is_direct_tt and is_direct_th:
         dW_osn_act = 1.1 * dco_act
         sq_osn_act = dco_act**2
@@ -358,11 +392,13 @@ def calculate_row(
             sq_osn_react = None
 
     # 7. Рабочая погрешность ИК (δW_раб)
-    sq_add_act = (dct_act or 0.0)**2 + (dcU_act or 0.0)**2 + (dcf_act or 0.0)**2 + (dmi_act or 0.0)**2
+    dmi_sq_act = (dmi_act**2) if dmi_act is not None else 0.0
+    sq_add_act = (dct_act or 0.0)**2 + (dcU_act or 0.0)**2 + (dcf_act or 0.0)**2 + dmi_sq_act
     dW_rab_act = 1.1 * math.sqrt(sq_osn_act + sq_add_act)
 
     if sq_osn_react is not None and dct_react is not None and dcU_react is not None and dcf_react is not None:
-        sq_add_react = dct_react**2 + dcU_react**2 + dcf_react**2 + (dmi_react or 0.0)**2
+        dmi_sq_react = (dmi_react**2) if dmi_react is not None else 0.0
+        sq_add_react = dct_react**2 + dcU_react**2 + dcf_react**2 + dmi_sq_react
         dW_rab_react = 1.1 * math.sqrt(sq_osn_react + sq_add_react)
     else:
         dW_rab_react = None
@@ -402,8 +438,8 @@ def calculate_row(
         "dcU_react": fmt_float(dcU_react, 2),
         "dcf_act": fmt_float(dcf_act, 2),
         "dcf_react": fmt_float(dcf_react, 2),
-        "dmi_act": fmt_float(dmi_act if dmi_act > 0 else None, 1),
-        "dmi_react": fmt_float(dmi_react, 1),
+        "dmi_act": fmt_float(dmi_act, 1) if dmi_act is not None else "н/н",
+        "dmi_react": fmt_float(dmi_react, 1) if dmi_react is not None else "н/н",
     }
 
 
@@ -414,16 +450,15 @@ def generate_group_table(
     meter_class: str,
     delta_t: float,
     delta_L: float = 0.25,
-    apply_magnetic_field: bool = False
+    magnetic_mode: str = "gost",
+    custom_dmi_val: float = 0.0
 ) -> List[Dict[str, Any]]:
     """
     Генерирует полную последовательность строк для измерительного канала / группы
     по всем нормируемым точкам тока и cos φ.
     """
     meter_prof = METER_BASE_PROFILES[meter_class]
-    tt_info = TT_PARAMS[tt_class]
 
-    # Определяем точки тока
     # Точка 1(2)% присутствует только если счетчик и ТТ поддерживают класс S
     include_1pct = meter_prof["has_1pct"] and ("S" in tt_class)
     if include_1pct:
@@ -445,7 +480,8 @@ def generate_group_table(
                 meter_class=meter_class,
                 delta_t=delta_t,
                 delta_L=delta_L,
-                apply_magnetic_field=apply_magnetic_field
+                magnetic_mode=magnetic_mode,
+                custom_dmi_val=custom_dmi_val
             )
             rows.append(row)
     return rows
