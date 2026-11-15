@@ -7,6 +7,7 @@
 """
 
 import os
+import re
 from typing import List, Dict, Any, Optional
 
 import openpyxl
@@ -38,6 +39,7 @@ HEADERS_SUMMARY = [
     ("dW_rab_act", "δW раб (акт), %"),
     ("dW_rab_react", "δW раб (реакт), %"),
 ]
+
 
 # Заголовки для 29-колоночной (полной по МИ 3000) таблицы
 HEADERS_FULL = [
@@ -71,6 +73,85 @@ HEADERS_FULL = [
     ("dW_rab_act", "δW раб (акт), %"),
     ("dW_rab_react", "δW раб (реакт), %"),
 ]
+
+
+def sanitize_filename_part(text: str) -> str:
+    """Очищает строку от недопустимых в Windows символов и лишних пробелов."""
+    # Заменяем разделители классов счетчика типа ' / ' на '-'
+    text = re.sub(r'\s*[\/\\]\s*', '-', text.strip())
+    # Заменяем двоеточия на дефис
+    text = text.replace(":", "-")
+    for bad_char in ['*', '?', '"', '<', '>', '|']:
+        text = text.replace(bad_char, '')
+    # Убираем запятые с пробелами -> просто запятая
+    text = re.sub(r'\s*,\s*', ',', text)
+    # Заменяем пробелы вокруг дефиса на одиночный дефис
+    text = re.sub(r'\s*-\s*', '-', text)
+    # Заменяем оставшиеся группы пробелов на знак подчеркивания
+    text = re.sub(r'\s+', '_', text.strip())
+    # Убираем возможные комбинации _-_ или -_-
+    text = re.sub(r'[_\-]+-[_\-]+', '-', text)
+    return text
+
+
+def make_export_filename(
+    ik_str: str = "1",
+    tt_str: str = "0.5S",
+    th_str: str = "0.5",
+    meter_str: str = "0.2S / 0.5",
+    delta_t: Any = 20.0,
+    ext: str = "xlsx",
+    is_all_groups: bool = False
+) -> str:
+    """
+    Генерирует осмысленное имя файла экспорта по шаблону:
+    "№каналов-ТТ_ТН_Счетчик_температура.<ext>"
+    Например:
+    "ИК1,2,15,16-ТТ0.2S_ТН0.2_Сч0.2S-0.5_t12C.xlsx"
+    """
+    ext = ext.lstrip(".")
+    if is_all_groups:
+        ik_part = "Все_ИК_1-23"
+        t_part = f"t{delta_t}C" if delta_t is not None else "t20C"
+        return f"{ik_part}-Сводная_таблица_проекта_{t_part}.{ext}"
+
+    # 1. Номер(а) каналов
+    ik_clean = sanitize_filename_part(str(ik_str))
+    if not ik_clean.lower().startswith("ик") and not ik_clean.lower().startswith("кан"):
+        ik_part = f"ИК{ik_clean}"
+    else:
+        ik_part = ik_clean
+
+    # 2. ТТ
+    tt_raw = str(tt_str).strip()
+    if tt_raw in ["—", "-", "", "Без ТТ", "Нет", "Нет (прямое включение)"]:
+        tt_part = "безТТ"
+    else:
+        tt_part = f"ТТ{sanitize_filename_part(tt_raw)}"
+
+    # 3. ТН
+    th_raw = str(th_str).strip()
+    if th_raw in ["—", "-", "", "Без ТН", "Нет"]:
+        th_part = "безТН"
+    else:
+        th_part = f"ТН{sanitize_filename_part(th_raw)}"
+
+    # 4. Счетчик
+    meter_raw = str(meter_str).replace("(Прямое включение)", "").strip()
+    meter_part = f"Сч{sanitize_filename_part(meter_raw)}"
+
+    # 5. Температура
+    try:
+        dt_val = float(str(delta_t).replace(",", "."))
+        if dt_val.is_integer():
+            t_part = f"t{int(dt_val)}C"
+        else:
+            t_part = f"t{dt_val}C"
+    except Exception:
+        t_part = f"t{sanitize_filename_part(str(delta_t))}C"
+
+    return f"{ik_part}-{tt_part}_{th_part}_{meter_part}_{t_part}.{ext}"
+
 
 
 def get_tsv_text(rows: List[Dict[str, Any]], mode: str = "summary") -> str:

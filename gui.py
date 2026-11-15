@@ -21,6 +21,7 @@ from exporters import (
     get_tsv_text,
     export_to_excel,
     export_to_docx,
+    make_export_filename,
 )
 
 TEMP_PRESETS = [
@@ -317,6 +318,14 @@ class ErrorCalcApp:
     def on_calculate(self):
         """Расчет одного выбранного варианта."""
         ik_num, tt_class, th_class, meter_class, delta_t, delta_L, mag_mode, custom_dmi = self.get_parsed_params()
+        self.is_all_groups = False
+        self.current_calc_params = {
+            "ik": ik_num,
+            "tt": tt_class,
+            "th": th_class,
+            "meter": meter_class,
+            "delta_t": delta_t
+        }
         self.current_rows = generate_group_table(
             ik_num=ik_num,
             tt_class=tt_class,
@@ -333,6 +342,14 @@ class ErrorCalcApp:
     def on_calculate_all_groups(self):
         """Пакетный расчет всех типовых групп каналов проекта."""
         _, _, _, _, delta_t, _, mag_mode, custom_dmi = self.get_parsed_params()
+        self.is_all_groups = True
+        self.current_calc_params = {
+            "ik": "Все_ИК_1-23",
+            "tt": "все",
+            "th": "все",
+            "meter": "все",
+            "delta_t": delta_t
+        }
         all_rows = []
         for g in PRESET_PROJECT_GROUPS:
             rows = generate_group_table(
@@ -416,7 +433,16 @@ class ErrorCalcApp:
             return
 
         mode = self.mode_var.get()
-        def_name = f"Погрешности_ИК_{mode}.xlsx"
+        params = getattr(self, "current_calc_params", {})
+        def_name = make_export_filename(
+            ik_str=params.get("ik", self.ik_var.get()),
+            tt_str=params.get("tt", self.tt_var.get()),
+            th_str=params.get("th", self.th_var.get()),
+            meter_str=params.get("meter", self.meter_var.get()),
+            delta_t=params.get("delta_t", self.delta_t_var.get()),
+            ext="xlsx",
+            is_all_groups=getattr(self, "is_all_groups", False)
+        )
         filepath = filedialog.asksaveasfilename(
             title="Сохранить таблицу в Excel",
             defaultextension=".xlsx",
@@ -427,7 +453,16 @@ class ErrorCalcApp:
             return
 
         try:
-            title = f"Таблица погрешностей измерений ИК АИИС КУЭ ({mode})"
+            if getattr(self, "is_all_groups", False):
+                title = f"Сводная таблица погрешностей всех групп ИК АИИС КУЭ (Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
+            else:
+                title = (
+                    f"Таблица погрешностей ИК {params.get('ik', self.ik_var.get())} "
+                    f"(ТТ: {params.get('tt', self.tt_var.get())}, "
+                    f"ТН: {params.get('th', self.th_var.get())}, "
+                    f"Счетчик: {params.get('meter', self.meter_var.get())}, "
+                    f"Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
+                )
             export_to_excel(self.current_rows, filepath, mode=mode, title=title)
             self.status_var.set(f"Успешно экспортировано в Excel: {os.path.basename(filepath)}")
             messagebox.showinfo("Экспорт завершен", f"Таблица успешно сохранена в файл:\n{filepath}")
@@ -440,7 +475,16 @@ class ErrorCalcApp:
             return
 
         mode = self.mode_var.get()
-        def_name = f"Погрешности_ИК_{mode}.docx"
+        params = getattr(self, "current_calc_params", {})
+        def_name = make_export_filename(
+            ik_str=params.get("ik", self.ik_var.get()),
+            tt_str=params.get("tt", self.tt_var.get()),
+            th_str=params.get("th", self.th_var.get()),
+            meter_str=params.get("meter", self.meter_var.get()),
+            delta_t=params.get("delta_t", self.delta_t_var.get()),
+            ext="docx",
+            is_all_groups=getattr(self, "is_all_groups", False)
+        )
         filepath = filedialog.asksaveasfilename(
             title="Сохранить таблицу в Word",
             defaultextension=".docx",
@@ -451,7 +495,16 @@ class ErrorCalcApp:
             return
 
         try:
-            title = f"Таблица погрешностей измерений измерительных каналов АИИС КУЭ"
+            if getattr(self, "is_all_groups", False):
+                title = f"Таблица пределов погрешностей измерений всех каналов АИИС КУЭ (Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
+            else:
+                title = (
+                    f"Таблица погрешностей ИК {params.get('ik', self.ik_var.get())} "
+                    f"(ТТ: {params.get('tt', self.tt_var.get())}, "
+                    f"ТН: {params.get('th', self.th_var.get())}, "
+                    f"Счетчик: {params.get('meter', self.meter_var.get())}, "
+                    f"Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
+                )
             export_to_docx(self.current_rows, filepath, mode=mode, title=title)
             self.status_var.set(f"Успешно экспортировано в Word: {os.path.basename(filepath)}")
             messagebox.showinfo("Экспорт завершен", f"Таблица успешно сохранена в файл Word:\n{filepath}")

@@ -11,7 +11,7 @@
 import sys
 import argparse
 from core import generate_group_table, PRESET_PROJECT_GROUPS
-from exporters import export_to_excel, export_to_docx, get_tsv_text
+from exporters import export_to_excel, export_to_docx, get_tsv_text, make_export_filename
 
 
 def parse_args():
@@ -68,11 +68,24 @@ def run_cli(args):
 
     if args.out:
         out_path = args.out
+        if out_path.lower() in ["auto", "auto.xlsx", "auto.docx", ".xlsx", ".docx", "xlsx", "docx"]:
+            ext = "docx" if "docx" in out_path.lower() else "xlsx"
+            out_path = make_export_filename(
+                ik_str=args.ik,
+                tt_str=args.tt,
+                th_str=args.th,
+                meter_str=args.meter,
+                delta_t=args.dt,
+                ext=ext,
+                is_all_groups=args.all_groups
+            )
         if out_path.lower().endswith(".xlsx"):
-            export_to_excel(target_rows, out_path, mode=args.mode, title="Расчет пределов погрешностей ИК АИИС КУЭ")
+            title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
+            export_to_excel(target_rows, out_path, mode=args.mode, title=title)
             print(f"Успешно экспортировано в Excel: {out_path}")
         elif out_path.lower().endswith(".docx"):
-            export_to_docx(target_rows, out_path, mode=args.mode, title="Расчет пределов погрешностей ИК АИИС КУЭ")
+            title = f"Таблица погрешностей ИК {args.ik}" if not args.all_groups else f"Таблица погрешностей всех групп ИК"
+            export_to_docx(target_rows, out_path, mode=args.mode, title=title)
             print(f"Успешно экспортировано в Word: {out_path}")
         else:
             with open(out_path, "w", encoding="utf-8") as f:
