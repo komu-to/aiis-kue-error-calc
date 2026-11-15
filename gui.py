@@ -12,7 +12,6 @@ from core import (
     TT_PARAMS,
     TH_PARAMS,
     METER_BASE_PROFILES,
-    PRESET_PROJECT_GROUPS,
     generate_group_table,
 )
 from exporters import (
@@ -23,7 +22,6 @@ from exporters import (
     export_to_docx,
     make_export_filename,
     export_table51_to_docx,
-    export_table51_to_excel,
     get_table51_tsv_text,
 )
 
@@ -130,7 +128,7 @@ class ErrorCalcApp:
         self.meter_combo.bind("<<ComboboxSelected>>", lambda e: self.on_calculate())
 
         ttk.Label(c2, text="Номер / обозначение ИК:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.ik_name_var = tk.StringVar(value="1, 2, 15, 16")
+        self.ik_name_var = tk.StringVar(value="1")
         self.ik_name_entry = ttk.Entry(c2, textvariable=self.ik_name_var, width=20)
         self.ik_name_entry.grid(row=1, column=1, sticky=tk.W, pady=2, padx=5)
 
@@ -201,13 +199,11 @@ class ErrorCalcApp:
         btn_action_frame = ttk.Frame(btn_bar)
         btn_action_frame.pack(side=tk.RIGHT)
 
-        ttk.Button(btn_action_frame, text="🚀 Рассчитать вариант", command=self.on_calculate).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_action_frame, text="📑 Все группы проекта", command=self.on_calculate_all_groups).pack(side=tk.LEFT, padx=3)
+        ttk.Button(btn_action_frame, text="🚀 Рассчитать", command=self.on_calculate).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_action_frame, text="📋 В буфер", command=self.on_copy_clipboard).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_action_frame, text="📊 Excel", command=self.on_export_excel).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_action_frame, text="📝 Word", command=self.on_export_docx).pack(side=tk.LEFT, padx=3)
         ttk.Button(btn_action_frame, text="📑 Таблица 5.1 (Word)", command=self.on_export_table51_docx).pack(side=tk.LEFT, padx=3)
-        ttk.Button(btn_action_frame, text="📊 Таблица 5.1 (Excel)", command=self.on_export_table51_excel).pack(side=tk.LEFT, padx=3)
 
         # --- Область отображения таблицы (Treeview со скроллбарами) ---
         table_container = ttk.Frame(main_frame)
@@ -240,7 +236,6 @@ class ErrorCalcApp:
         self.context_menu.add_command(label="Экспорт в Word (.docx)", command=self.on_export_docx)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Word, δW осн)", command=self.on_export_table51_docx)
-        self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Excel, δW осн)", command=self.on_export_table51_excel)
         self.tree.bind("<Button-3>", self.show_context_menu)
 
         # Привязка клавиши Ctrl+C
@@ -348,35 +343,6 @@ class ErrorCalcApp:
         self.refresh_table_view()
         self.status_var.set(f"Рассчитан канал [{ik_num}]: ТТ {tt_class}, ТН {th_class}, Счетчик {meter_class}, Δt={delta_t}°C, Магн. индукция={mag_mode}. Строк: {len(self.current_rows)}")
 
-    def on_calculate_all_groups(self):
-        """Пакетный расчет всех типовых групп каналов проекта."""
-        _, _, _, _, delta_t, _, mag_mode, custom_dmi = self.get_parsed_params()
-        self.is_all_groups = True
-        self.current_calc_params = {
-            "ik": "Все_ИК_1-23",
-            "tt": "все",
-            "th": "все",
-            "meter": "все",
-            "delta_t": delta_t
-        }
-        all_rows = []
-        for g in PRESET_PROJECT_GROUPS:
-            rows = generate_group_table(
-                ik_num=g["ik"],
-                tt_class=g["tt"],
-                th_class=g["th"],
-                meter_class=g["meter"],
-                delta_t=delta_t,
-                delta_L=g["delta_L"],
-                magnetic_mode=mag_mode,
-                custom_dmi_val=custom_dmi
-            )
-            all_rows.extend(rows)
-
-        self.current_rows = all_rows
-        self.refresh_table_view()
-        self.status_var.set(f"Пакетный расчет завершен: рассчитано {len(PRESET_PROJECT_GROUPS)} групп ({len(all_rows)} строк)")
-
     def refresh_table_view(self):
         """Обновление колонок и данных в Treeview."""
         mode = self.mode_var.get()
@@ -444,7 +410,7 @@ class ErrorCalcApp:
         mode = self.mode_var.get()
         params = getattr(self, "current_calc_params", {})
         def_name = make_export_filename(
-            ik_str=params.get("ik", self.ik_var.get()),
+            ik_str=params.get("ik", self.ik_name_var.get()),
             tt_str=params.get("tt", self.tt_var.get()),
             th_str=params.get("th", self.th_var.get()),
             meter_str=params.get("meter", self.meter_var.get()),
@@ -466,7 +432,7 @@ class ErrorCalcApp:
                 title = f"Сводная таблица погрешностей всех групп ИК АИИС КУЭ (Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
             else:
                 title = (
-                    f"Таблица погрешностей ИК {params.get('ik', self.ik_var.get())} "
+                    f"Таблица погрешностей ИК {params.get('ik', self.ik_name_var.get())} "
                     f"(ТТ: {params.get('tt', self.tt_var.get())}, "
                     f"ТН: {params.get('th', self.th_var.get())}, "
                     f"Счетчик: {params.get('meter', self.meter_var.get())}, "
@@ -486,7 +452,7 @@ class ErrorCalcApp:
         mode = self.mode_var.get()
         params = getattr(self, "current_calc_params", {})
         def_name = make_export_filename(
-            ik_str=params.get("ik", self.ik_var.get()),
+            ik_str=params.get("ik", self.ik_name_var.get()),
             tt_str=params.get("tt", self.tt_var.get()),
             th_str=params.get("th", self.th_var.get()),
             meter_str=params.get("meter", self.meter_var.get()),
@@ -508,7 +474,7 @@ class ErrorCalcApp:
                 title = f"Таблица пределов погрешностей измерений всех каналов АИИС КУЭ (Δt={params.get('delta_t', self.delta_t_var.get())}°C)"
             else:
                 title = (
-                    f"Таблица погрешностей ИК {params.get('ik', self.ik_var.get())} "
+                    f"Таблица погрешностей ИК {params.get('ik', self.ik_name_var.get())} "
                     f"(ТТ: {params.get('tt', self.tt_var.get())}, "
                     f"ТН: {params.get('th', self.th_var.get())}, "
                     f"Счетчик: {params.get('meter', self.meter_var.get())}, "
@@ -544,7 +510,7 @@ class ErrorCalcApp:
             title = f"Таблица 5.1 — Пределы допускаемой основной погрешности измерений ИК АИИС КУЭ, ± δWосн (%)"
         else:
             base_fn = make_export_filename(
-                ik_str=params.get("ik", self.ik_var.get()),
+                ik_str=params.get("ik", self.ik_name_var.get()),
                 tt_str=params.get("tt", self.tt_var.get()),
                 th_str=params.get("th", self.th_var.get()),
                 meter_str=params.get("meter", self.meter_var.get()),
@@ -552,7 +518,7 @@ class ErrorCalcApp:
                 ext="docx"
             )
             def_name = f"Таблица_5.1_δW_осн-{base_fn}"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_var.get())}, ± δWосн (%)"
+            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_name_var.get())}, ± δWосн (%)"
 
         filepath = filedialog.asksaveasfilename(
             title="Сохранить в формате Таблицы 5.1 (Word)",
@@ -569,44 +535,6 @@ class ErrorCalcApp:
             messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW осн) успешно сохранена в файл Word:\n{filepath}")
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить Таблицу 5.1 в Word:\n{e}")
-
-    def on_export_table51_excel(self):
-        """Экспорт в формат Таблицы 5.1 проекта (Excel, δW осн)."""
-        if not self.current_rows:
-            messagebox.showwarning("Предупреждение", "Нет данных для экспорта.")
-            return
-
-        params = getattr(self, "current_calc_params", {})
-        if getattr(self, "is_all_groups", False):
-            def_name = f"Таблица_5.1_δW_осн-Все_ИК_1-23.xlsx"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности измерений ИК АИИС КУЭ, ± δWосн (%)"
-        else:
-            base_fn = make_export_filename(
-                ik_str=params.get("ik", self.ik_var.get()),
-                tt_str=params.get("tt", self.tt_var.get()),
-                th_str=params.get("th", self.th_var.get()),
-                meter_str=params.get("meter", self.meter_var.get()),
-                delta_t=params.get("delta_t", self.delta_t_var.get()),
-                ext="xlsx"
-            )
-            def_name = f"Таблица_5.1_δW_осн-{base_fn}"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_var.get())}, ± δWосн (%)"
-
-        filepath = filedialog.asksaveasfilename(
-            title="Сохранить в формате Таблицы 5.1 (Excel)",
-            defaultextension=".xlsx",
-            filetypes=[("Файлы Excel (*.xlsx)", "*.xlsx"), ("Все файлы (*.*)", "*.*")],
-            initialfile=def_name
-        )
-        if not filepath:
-            return
-
-        try:
-            export_table51_to_excel(self.current_rows, filepath, val_type="osn", title=title)
-            self.status_var.set(f"Таблица 5.1 (δW осн) успешно экспортирована в Excel: {os.path.basename(filepath)}")
-            messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW осн) успешно сохранена в файл Excel:\n{filepath}")
-        except Exception as e:
-            messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить Таблицу 5.1 в Excel:\n{e}")
 
 
 def main():
