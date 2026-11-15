@@ -387,16 +387,16 @@ def group_rows_for_table51(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return groups
 
 
-def build_table51_data(groups_list: List[Dict[str, Any]], val_type: str = "osn") -> List[Dict[str, Any]]:
+def build_table51_data(groups_list: List[Dict[str, Any]], val_type: str = "rab") -> List[Dict[str, Any]]:
     """
     Формирует структуру матрицы Таблицы 5.1 для экспорта в Word / Excel.
-    val_type: 'osn' (δW осн) или 'rab' (δW раб)
+    val_type: 'rab' (δW раб, по умолчанию) или 'osn' (δW осн)
     """
     matrix_groups = []
     cos_list = ["0,5", "0,8", "0,9", "1,0"]
 
-    key_act = "dW_osn_act" if val_type == "osn" else "dW_rab_act"
-    key_react = "dW_osn_react" if val_type == "osn" else "dW_rab_react"
+    key_act = "dW_rab_act" if val_type == "rab" else "dW_osn_act"
+    key_react = "dW_rab_react" if val_type == "rab" else "dW_osn_react"
 
     for grp_info in groups_list:
         label = grp_info["label"]
@@ -468,7 +468,7 @@ def build_table51_data(groups_list: List[Dict[str, Any]], val_type: str = "osn")
 def export_table51_to_docx(
     rows: List[Dict[str, Any]],
     filepath: str,
-    val_type: str = "osn",
+    val_type: str = "rab",
     title: Optional[str] = None
 ) -> str:
     """Экспорт данных в формате Таблицы 5.1 проекта в Microsoft Word (.docx)."""
@@ -487,11 +487,14 @@ def export_table51_to_docx(
     section.left_margin = Inches(0.5)
     section.right_margin = Inches(0.5)
 
-    val_name = "основной" if val_type == "osn" else "в рабочих условиях"
-    val_sym = "δWосн" if val_type == "osn" else "δWраб"
+    val_name = "в рабочих условиях" if val_type == "rab" else "основной"
+    val_sym = "δWраб" if val_type == "rab" else "δWосн"
 
     if not title:
-        title = f"Таблица 5.1 — Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+        if val_type == "rab":
+            title = f"Таблица 5.1 — Пределы допускаемой погрешности ИК в рабочих условиях при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+        else:
+            title = f"Таблица 5.1 — Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
 
     p_title = doc.add_paragraph()
     p_title.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -542,7 +545,11 @@ def export_table51_to_docx(
 
     c_top = table.cell(0, 2)
     c_top.merge(table.cell(0, 9))
-    _format_cell(c_top, f"Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)", bold=True, size_pt=9.5)
+    if val_type == "rab":
+        header_top = f"Пределы допускаемой погрешности ИК в рабочих условиях при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+    else:
+        header_top = f"Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+    _format_cell(c_top, header_top, bold=True, size_pt=9.5)
 
     # Шапка Row 1
     ranges = [
@@ -623,7 +630,7 @@ def export_table51_to_docx(
 def export_table51_to_excel(
     rows: List[Dict[str, Any]],
     filepath: str,
-    val_type: str = "osn",
+    val_type: str = "rab",
     title: Optional[str] = None
 ) -> str:
     """Экспорт данных в формате Таблицы 5.1 проекта в Microsoft Excel (.xlsx)."""
@@ -632,12 +639,15 @@ def export_table51_to_excel(
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    val_name = "основной" if val_type == "osn" else "в рабочих условиях"
-    val_sym = "δWосн" if val_type == "osn" else "δWраб"
+    val_name = "в рабочих условиях" if val_type == "rab" else "основной"
+    val_sym = "δWраб" if val_type == "rab" else "δWосн"
     ws.title = f"Таблица 5.1 ({val_sym})"
 
     if not title:
-        title = f"Таблица 5.1 — Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+        if val_type == "rab":
+            title = f"Таблица 5.1 — Пределы допускаемой погрешности ИК в рабочих условиях при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+        else:
+            title = f"Таблица 5.1 — Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
 
     ws['A1'] = title
     ws['A1'].font = Font(name="Calibri", size=12, bold=True, color="1F497D")
@@ -662,7 +672,10 @@ def export_table51_to_excel(
     ws['B3'] = "Значение\ncos φ (sin φ)"
 
     ws.merge_cells('C3:J3')
-    ws['C3'] = f"Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+    if val_type == "rab":
+        ws['C3'] = f"Пределы допускаемой погрешности ИК в рабочих условиях при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
+    else:
+        ws['C3'] = f"Пределы допускаемой {val_name} погрешности ИК при измерении активной (реактивной) электроэнергии, ± {val_sym} (%)"
 
     ws.merge_cells('C4:D4')
     ws['C4'] = "δ1(2)%, I1(2) ≤ Iизм < I5%"
@@ -744,12 +757,12 @@ def export_table51_to_excel(
     return filepath
 
 
-def get_table51_tsv_text(rows: List[Dict[str, Any]], val_type: str = "osn") -> str:
+def get_table51_tsv_text(rows: List[Dict[str, Any]], val_type: str = "rab") -> str:
     """Генерирует текст TSV в формате Таблицы 5.1 для вставки через буфер обмена."""
     groups_list = group_rows_for_table51(rows)
     groups_data = build_table51_data(groups_list, val_type=val_type)
 
-    val_sym = "δWосн" if val_type == "osn" else "δWраб"
+    val_sym = "δWраб" if val_type == "rab" else "δWосн"
     lines = [
         f"Номера каналов\tЗначение cos φ (sin φ)\tδ1(2)%, акт (±{val_sym})\tδ1(2)%, реакт\tδ5%, акт\tδ5%, реакт\tδ20%, акт\tδ20%, реакт\tδ100%, акт\tδ100%, реакт"
     ]

@@ -36,7 +36,7 @@ def parse_args():
     parser.add_argument("--all-groups", action="store_true", help="Сгенерировать все типовые группы проекта")
     parser.add_argument("--mode", choices=["summary", "full", "table51"], default="full", help="Формат таблицы: summary (15 граф), full (29 граф) или table51 (матрица Таблицы 5.1 МИ)")
     parser.add_argument("--table51", action="store_true", help="Экспортировать в формат Таблицы 5.1 (матрица по cos phi и токам)")
-    parser.add_argument("--val-type", choices=["osn", "rab"], default="osn", help="Тип выводимой погрешности для Таблицы 5.1: osn (δW осн, по умолчанию) или rab (δW раб)")
+    parser.add_argument("--val-type", choices=["osn", "rab"], default="rab", help="Тип выводимой погрешности для Таблицы 5.1: rab (δW раб, по умолчанию) или osn (δW осн)")
     parser.add_argument("--out", type=str, help="Путь для сохранения файла (.xlsx или .docx)")
     return parser.parse_args()
 
@@ -94,8 +94,9 @@ def run_cli(args):
             out_path = f"Таблица_5.1_δW_{args.val_type}-{base_name}" if is_table51 else base_name
 
         if is_table51:
-            val_sym = "δWосн" if args.val_type == "osn" else "δWраб"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК, ± {val_sym} (%)"
+            val_sym = "δWраб" if args.val_type == "rab" else "δWосн"
+            val_name = "в рабочих условиях" if args.val_type == "rab" else "основной"
+            title = f"Таблица 5.1 — Пределы допускаемой погрешности ИК {val_name}, ± {val_sym} (%)"
             if out_path.lower().endswith(".xlsx"):
                 export_table51_to_excel(target_rows, out_path, val_type=args.val_type, title=title)
                 print(f"Успешно экспортировано в Excel (Таблица 5.1): {out_path}")

@@ -230,12 +230,12 @@ class ErrorCalcApp:
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="Копировать выделенное (TSV)", command=self.copy_selection)
         self.context_menu.add_command(label="Копировать всю таблицу", command=self.on_copy_clipboard)
-        self.context_menu.add_command(label="Копировать как Таблицу 5.1 (δW осн)", command=self.on_copy_table51)
+        self.context_menu.add_command(label="Копировать как Таблицу 5.1 (δW раб)", command=self.on_copy_table51)
         self.context_menu.add_separator()
         self.context_menu.add_command(label="Экспорт в Excel (.xlsx)", command=self.on_export_excel)
         self.context_menu.add_command(label="Экспорт в Word (.docx)", command=self.on_export_docx)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Word, δW осн)", command=self.on_export_table51_docx)
+        self.context_menu.add_command(label="Экспорт в Таблицу 5.1 (Word, δW раб)", command=self.on_export_table51_docx)
         self.tree.bind("<Button-3>", self.show_context_menu)
 
         # Привязка клавиши Ctrl+C
@@ -487,27 +487,27 @@ class ErrorCalcApp:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить файл Word:\n{e}")
 
     def on_copy_table51(self):
-        """Копирование данных в формате Таблицы 5.1 (δW осн) в буфер обмена."""
+        """Копирование данных в формате Таблицы 5.1 (δW раб) в буфер обмена."""
         if not self.current_rows:
             messagebox.showwarning("Предупреждение", "Нет данных для копирования.")
             return
 
-        tsv_text = get_table51_tsv_text(self.current_rows, val_type="osn")
+        tsv_text = get_table51_tsv_text(self.current_rows, val_type="rab")
         self.root.clipboard_clear()
         self.root.clipboard_append(tsv_text)
-        self.status_var.set("Матрица Таблицы 5.1 (δW осн) скопирована в буфер обмена (TSV).")
-        messagebox.showinfo("Буфер обмена", "Матрица Таблицы 5.1 (δW осн: акт и реакт) скопирована в буфер обмена!\nТеперь вы можете нажать Ctrl+V в Excel или Word.")
+        self.status_var.set("Матрица Таблицы 5.1 (δW раб) скопирована в буфер обмена (TSV).")
+        messagebox.showinfo("Буфер обмена", "Матрица Таблицы 5.1 (δW раб: акт и реакт) скопирована в буфер обмена!\nТеперь вы можете нажать Ctrl+V в Excel или Word.")
 
     def on_export_table51_docx(self):
-        """Экспорт в формат Таблицы 5.1 проекта (Word, δW осн)."""
+        """Экспорт в формат Таблицы 5.1 проекта (Word, δW раб)."""
         if not self.current_rows:
             messagebox.showwarning("Предупреждение", "Нет данных для экспорта.")
             return
 
         params = getattr(self, "current_calc_params", {})
         if getattr(self, "is_all_groups", False):
-            def_name = f"Таблица_5.1_δW_осн-Все_ИК_1-23.docx"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности измерений ИК АИИС КУЭ, ± δWосн (%)"
+            def_name = f"Таблица_5.1_δW_раб-Все_ИК_1-23.docx"
+            title = f"Таблица 5.1 — Пределы допускаемой погрешности измерений ИК АИИС КУЭ в рабочих условиях, ± δWраб (%)"
         else:
             base_fn = make_export_filename(
                 ik_str=params.get("ik", self.ik_name_var.get()),
@@ -517,8 +517,8 @@ class ErrorCalcApp:
                 delta_t=params.get("delta_t", self.delta_t_var.get()),
                 ext="docx"
             )
-            def_name = f"Таблица_5.1_δW_осн-{base_fn}"
-            title = f"Таблица 5.1 — Пределы допускаемой основной погрешности ИК {params.get('ik', self.ik_name_var.get())}, ± δWосн (%)"
+            def_name = f"Таблица_5.1_δW_раб-{base_fn}"
+            title = f"Таблица 5.1 — Пределы допускаемой погрешности ИК {params.get('ik', self.ik_name_var.get())} в рабочих условиях, ± δWраб (%)"
 
         filepath = filedialog.asksaveasfilename(
             title="Сохранить в формате Таблицы 5.1 (Word)",
@@ -530,9 +530,9 @@ class ErrorCalcApp:
             return
 
         try:
-            export_table51_to_docx(self.current_rows, filepath, val_type="osn", title=title)
-            self.status_var.set(f"Таблица 5.1 (δW осн) успешно экспортирована в Word: {os.path.basename(filepath)}")
-            messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW осн) успешно сохранена в файл Word:\n{filepath}")
+            export_table51_to_docx(self.current_rows, filepath, val_type="rab", title=title)
+            self.status_var.set(f"Таблица 5.1 (δW раб) успешно экспортирована в Word: {os.path.basename(filepath)}")
+            messagebox.showinfo("Экспорт завершен", f"Таблица 5.1 (δW раб) успешно сохранена в файл Word:\n{filepath}")
         except Exception as e:
             messagebox.showerror("Ошибка экспорта", f"Не удалось сохранить Таблицу 5.1 в Word:\n{e}")
 
